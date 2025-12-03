@@ -1,0 +1,194 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/* ============================
+   USER
+============================= */
+
+model User {
+  nik                     String        @id
+  nomor_identitas_tunggal String        @unique
+  email                   String        @unique
+  password                String
+  nama                    String
+  role                    Role          @default(civitas_faste)
+  createdAt               DateTime      @default(now())
+  updateAt                DateTime      @updatedAt
+
+  peminjamanP             PeminjamanP[]
+  barangUnit              BarangUnit[]
+}
+
+/* ============================
+   DATA BARANG UTAMA
+============================= */
+
+model DataBarang {
+  kode_barang  String       @id
+  jenis_barang String
+  merek        String
+  barangUnit   BarangUnit[]
+}
+
+/* ============================
+   DATA LOKASI
+============================= */
+
+model DataLokasi {
+  kode_lokasi String        @id
+  lokasi      String
+  status      StatusLokasi  @default(tidakDipinjam)
+
+  barangUnit  BarangUnit[]
+  peminjamanP PeminjamanP[]
+  monitoring  Monitoring[]
+}
+
+/* ============================
+   UNIT BARANG (1 PER NUP)
+============================= */
+
+model BarangUnit {
+  nup         String        @id
+  kodeBarang  String
+  lokasi      String
+  nikUser     String
+  status      StatusB       @default(Tersedia)
+  createdAt   DateTime      @default(now())
+
+  // relasi
+  dataBarang  DataBarang    @relation(fields: [kodeBarang], references: [kode_barang])
+  dataLokasi  DataLokasi    @relation(fields: [lokasi], references: [kode_lokasi])
+  user        User          @relation(fields: [nikUser], references: [nik])
+  monitoring  Monitoring[]
+
+  // relasi peminjaman baru
+  peminjamanItems PeminjamanItem[]
+}
+
+/* ============================
+   PEMINJAMAN (LOKASI / BMN)
+============================= */
+
+model PeminjamanP {
+  id             Int           @id @default(autoincrement())
+  userNik        String
+  kodeLokasi     String?
+  lokasiTambahan String?
+  no_hp          String
+  createdAt      DateTime      @default(now())
+  Agenda         String
+  waktuMulai     DateTime
+  waktuSelesai   DateTime
+  verifikasi     StatusBooking @default(pending)
+  status         StatusP       @default(booking)
+
+  // Tambahan untuk QR (bukan per hari, cuma pertama & terakhir)
+  waktuAmbil     DateTime?
+  waktuKembali   DateTime?
+
+  // Relasi
+  user           User          @relation(fields: [userNik], references: [nik])
+  lokasi         DataLokasi?   @relation(fields: [kodeLokasi], references: [kode_lokasi])
+  items          PeminjamanItem[]
+  logScanBMN     LogScanBMN[]
+
+  // Legacy field (boleh dibiarkan dulu)
+  barangUnitId   String?
+  qrCode         String?
+}
+
+model LogScanBMN {
+  id           Int          @id @default(autoincrement())
+  peminjamanId Int
+  peminjaman   PeminjamanP  @relation(fields: [peminjamanId], references: [id])
+
+  jenis        String       // "pickup" atau "return"
+  waktuScan    DateTime     @default(now())
+  petugasNik   String
+  keterangan   String?
+}
+
+/* ============================
+   PEMINJAMAN ITEM (JOIN TABLE)
+   — banyak barang per peminjaman
+============================= */
+
+model PeminjamanItem {
+  id             Int          @id @default(autoincrement())
+  peminjamanId   Int
+  nupBarang      String
+
+  peminjaman     PeminjamanP  @relation(fields: [peminjamanId], references: [id])
+  barangUnit     BarangUnit   @relation(fields: [nupBarang], references: [nup])
+
+  @@index([peminjamanId])
+  @@index([nupBarang])
+}
+
+/* ============================
+   MONITORING KONDISI BARANG
+============================= */
+
+model Monitoring {
+  id             String         @id
+  nupBarang      String
+  waktu          DateTime
+  plt            String
+  kondisiBarang  KondisiBarangM @default(baik)
+  lokasiBarang   String?
+  lokasiTambahan String?
+  foto           String
+  keterangan     String?
+
+  barangUnit     BarangUnit     @relation(fields: [nupBarang], references: [nup])
+  dataLokasi     DataLokasi?    @relation(fields: [lokasiBarang], references: [kode_lokasi])
+}
+
+/* ============================
+   ENUM
+============================= */
+
+enum Role {
+  civitas_faste
+  staff
+  kepala_bagian_akademik
+  staff_prodi
+}
+
+enum StatusBooking {
+  pending
+  diterima
+  ditolak
+}
+
+enum StatusP {
+  booking
+  aktif
+  selesai
+  batal
+}
+
+enum StatusB {
+  Tersedia
+  TidakTersedia
+}
+
+enum KondisiBarangM {
+  baik
+  rusak_ringan
+  rusak_berat
+}
+
+enum StatusLokasi {
+  dipinjam
+  tidakDipinjam
+  belumTersedia
+}
